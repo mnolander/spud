@@ -3,7 +3,10 @@ import queue
 import copy
 import cv2
 import numpy as np
-import apriltag
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid")))
+from src.aprilgrid import Detector
 from vmbpy import *
 import time  # To add delay in frame production
 
@@ -11,7 +14,7 @@ import time  # To add delay in frame production
 FRAME_QUEUE_SIZE = 20
 FRAME_HEIGHT = 1800
 FRAME_WIDTH = 1800
-TAG_SIZE = 0.127  # Tag size in meters (e.g., 10 cm)
+TAG_SIZE = 0.02  # Tag size in meters (e.g., 10 cm)
 FOCAL_LENGTH = 3940  # Example focal length in pixels
 
 def calculate_distance(tag_size, focal_length, tag_width_pixels):
@@ -93,14 +96,7 @@ class FrameProducer(threading.Thread):
 class FrameConsumer:
     def __init__(self, frame_queue: queue.Queue):
         self.frame_queue = frame_queue
-        self.detector = apriltag.Detector(
-            apriltag.DetectorOptions(
-                families='tag36h11',
-                nthreads=4,
-                quad_decimate=1.0,
-                refine_edges=True,
-            )
-        )
+        self.detector = Detector("t16h5b1")
         self.running = True
 
     def run(self):
