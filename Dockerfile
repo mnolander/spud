@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y \
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Set environment variable for GENICAM
-ENV GENICAM_GENTL64_PATH=/home/docker/camcontainer/Vimba_2023-4/cti
+ENV GENICAM_GENTL64_PATH=/home/docker/camcontainer/Vimba_2024-1/cti
 
 # Copy the local "camcontainer" directory into the Docker image - Replace "camcontainer" with the name of your directory
 COPY camcontainer /home/docker/camcontainer
