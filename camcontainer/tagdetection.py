@@ -20,6 +20,8 @@ FRAME_WIDTH = 4024
 DISPLAY_WIDTH = 720
 DISPLAY_HEIGHT = 720
 
+detector = Detector('t36h11')  # Initialize AprilGrid detector
+
 cv2.setUseOptimized(True)
 
 def print_preamble():
@@ -82,7 +84,7 @@ class FrameProducer(threading.Thread):
     def setup_camera(self):
         set_nearest_value(self.cam, 'Height', FRAME_HEIGHT)
         set_nearest_value(self.cam, 'Width', FRAME_WIDTH)
-        
+
         try:
             self.cam.ExposureAuto.set('Off')
             self.cam.ExposureTime.set(20000)
@@ -108,7 +110,6 @@ class FrameConsumer:
     def __init__(self, frame_queue: queue.Queue):
         self.frame_queue = frame_queue
         self.camera_data = {}
-        self.detector = Detector("t16h5b1")  # Initialize the AprilGrid detector
 
     def calculate_fps(self, cam_id: str):
         current_time = time.time()
@@ -127,13 +128,14 @@ class FrameConsumer:
         resolution = (frame.get_width(), frame.get_height())
         print(f"Camera {cam_id} - FPS: {fps:.2f}, Resolution: {resolution}")
 
-    def detect_aprilgrid(self, frame: numpy.ndarray) -> numpy.ndarray:
-        """Detect AprilGrid in the frame and overlay detections."""
-        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Ensure the frame is grayscale
-        detections = self.detector.detect(gray_frame)  # Detect AprilGrid
-        for corner in detections:
-            cv2.circle(frame, (int(corner[0]), int(corner[1])), 5, (0, 255, 0), -1)  # Draw detected points
-        return frame
+    def process_aprilgrid(self, frame: numpy.ndarray):
+        detections = detector.detect(frame)
+        for detection in detections:
+            center = numpy.round(numpy.average(detection.corners, axis=0)).astype(int)
+            cv2.putText(frame, f"ID: {detection.tag_id}", tuple(center), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+            for corner in detection.corners:
+                corner = numpy.round(corner).astype(int)
+                cv2.circle(frame, tuple(corner), 5, (0, 255, 0), -1)
 
     def run(self):
         IMAGE_CAPTION = 'DroneCam Multicam View: Press <Enter> to exit'
@@ -151,17 +153,17 @@ class FrameConsumer:
                     frames[cam_id] = frame
                     self.calculate_fps(cam_id)
                     self.log_frame_info(cam_id, frame)  # Log frame info here
+
+                    cv_frame = resize_if_required(frame)
+                    self.process_aprilgrid(cv_frame)
+                    frames[cam_id] = cv_frame
                 else:
                     frames.pop(cam_id, None)
             except queue.Empty:
                 pass
 
             if frames:
-                cv_images = []
-                for cam_id in sorted(frames.keys()):
-                    processed_frame = resize_if_required(frames[cam_id])
-                    detected_frame = self.detect_aprilgrid(processed_frame)  # Detect AprilGrid
-                    cv_images.append(resize_for_display(detected_frame))
+                cv_images = [resize_for_display(frames[cam_id]) for cam_id in sorted(frames.keys())]
                 display_frame = numpy.concatenate(cv_images, axis=1)
                 cv2.imshow(IMAGE_CAPTION, display_frame)
             else:
