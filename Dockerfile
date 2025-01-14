@@ -30,6 +30,7 @@ RUN apt-get update && apt-get install -y \
     libatlas-base-dev \
     python3-wstool \
     python3-catkin-tools \
+    libv4l-dev \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
