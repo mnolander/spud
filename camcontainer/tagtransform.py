@@ -3,7 +3,10 @@ import queue
 import copy
 import cv2
 import numpy as np
-import apriltag
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid")))
+from src.aprilgrid import Detector
 from vmbpy import *
 import time  # To add delay in frame production
 
@@ -103,14 +106,7 @@ class FrameProducer(threading.Thread):
 class FrameConsumer:
     def __init__(self, frame_queue: queue.Queue):
         self.frame_queue = frame_queue
-        self.detector = apriltag.Detector(
-            apriltag.DetectorOptions(
-                families='tag36h11',
-                nthreads=4,
-                quad_decimate=1.0,
-                refine_edges=True,
-            )
-        )
+        self.detector = Detector("t16h5b1")
         self.running = True
 
     def run(self):
