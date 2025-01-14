@@ -38,8 +38,8 @@ RUN apt-get update && apt-get install -y \
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
 # Set environment variable for GENICAM
-ENV GENICAM_GENTL64_PATH=/home/docker/camcontainer/Vimba_2024-1/cti
-ENV VIMBAX_HOME /home/docker/camcontainer/VimbaX_2024-1
+ENV GENICAM_GENTL64_PATH=/home/docker/camcontainer/VimbaX_2024-1/cti
+ENV VIMBAX_HOME /home/docker/camcontainer/VimbaX_2024-1/api/python
 ENV LD_LIBRARY_PATH $VIMBAX_HOME/api/lib:$LD_LIBRARY_PATH
 
 # Copy the local "camcontainer" directory into the Docker image - Replace "camcontainer" with the name of your directory
@@ -47,7 +47,7 @@ COPY camcontainer /home/docker/camcontainer
 
 # # Set the working directory
 WORKDIR /home/docker/camcontainer
-
+RUN mkdir -p /etc/udev/rules.d
 
 # Clone and set up Kalibr
 # RUN git clone https://github.com/ethz-asl/kalibr.git /home/docker/camcontainer/kalibr && \
