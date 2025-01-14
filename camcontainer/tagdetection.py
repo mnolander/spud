@@ -28,11 +28,6 @@ def print_preamble():
     print('////////////////////////////////////////\n')
     print(flush=True)
 
-# def add_camera_id(frame: Frame, cam_id: str) -> Frame:
-#     cv2.putText(frame.as_opencv_image(), f'Cam: {cam_id}', org=(10, 100), fontScale=1,
-#                 color=255, thickness=1, fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL)
-#     return frame
-
 def resize_if_required(frame: Frame) -> numpy.ndarray:
     cv_frame = frame.as_opencv_image()
     if (frame.get_height() != FRAME_HEIGHT) or (frame.get_width() != FRAME_WIDTH):
@@ -113,6 +108,7 @@ class FrameConsumer:
     def __init__(self, frame_queue: queue.Queue):
         self.frame_queue = frame_queue
         self.camera_data = {}
+        self.detector = Detector("t16h5b1")  # Initialize the AprilGrid detector
 
     def calculate_fps(self, cam_id: str):
         current_time = time.time()
@@ -130,6 +126,14 @@ class FrameConsumer:
         fps = self.camera_data[cam_id].get("fps", 0.0)
         resolution = (frame.get_width(), frame.get_height())
         print(f"Camera {cam_id} - FPS: {fps:.2f}, Resolution: {resolution}")
+
+    def detect_aprilgrid(self, frame: numpy.ndarray) -> numpy.ndarray:
+        """Detect AprilGrid in the frame and overlay detections."""
+        gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)  # Ensure the frame is grayscale
+        detections = self.detector.detect(gray_frame)  # Detect AprilGrid
+        for corner in detections:
+            cv2.circle(frame, (int(corner[0]), int(corner[1])), 5, (0, 255, 0), -1)  # Draw detected points
+        return frame
 
     def run(self):
         IMAGE_CAPTION = 'DroneCam Multicam View: Press <Enter> to exit'
@@ -153,7 +157,11 @@ class FrameConsumer:
                 pass
 
             if frames:
-                cv_images = [resize_for_display(resize_if_required(frames[cam_id])) for cam_id in sorted(frames.keys())]
+                cv_images = []
+                for cam_id in sorted(frames.keys()):
+                    processed_frame = resize_if_required(frames[cam_id])
+                    detected_frame = self.detect_aprilgrid(processed_frame)  # Detect AprilGrid
+                    cv_images.append(resize_for_display(detected_frame))
                 display_frame = numpy.concatenate(cv_images, axis=1)
                 cv2.imshow(IMAGE_CAPTION, display_frame)
             else:
