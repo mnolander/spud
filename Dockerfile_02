@@ -1,0 +1,33 @@
+# Use the official ROS Noetic (Ubuntu 20.04) image as the base
+FROM ros:noetic-ros-core-focal
+
+# Set environment to noninteractive to avoid prompts during installation
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Install system dependencies (for OpenCV and camera dependencies)
+RUN apt-get update && \
+    apt-get install -y \
+    libopencv-dev \
+    libv4l-dev \
+    build-essential \
+    cmake \
+    git \
+    python3-pip \
+    python3-opencv \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip3 install --upgrade pip
+RUN pip3 install numpy
+
+# Copy the local "camcontainer" directory into the Docker image
+COPY camcontainer /home/docker/camcontainer
+
+# Set the working directory to the "camcontainer" folder inside the container
+WORKDIR /home/docker/camcontainer
+
+# Copy the current directory contents into the container at /app
+COPY . /home/docker/camcontainer/
+
+# Set the entry point to run the script when the container starts
+CMD ["/bin/bash"]
