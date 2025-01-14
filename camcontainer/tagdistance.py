@@ -198,15 +198,6 @@ class FrameConsumer:
                 self.last_time[cam_id] = current_time
                 self.frame_counts[cam_id] = 0
 
-#                 # Adjusting the font scale, thickness, and position for better visibility
-#                 font_scale = 1.5  # Set the desired font size
-#                 thickness = 3  # Make the text thicker for visibility
-#                 color = (255, 255, 0)  # Use a bright color like yellow for contrast
-#                 position = (10, 30)  # Position of the FPS text
-
-# # Display FPS on the image
-#                 cv2.putText(image_display, f'FPS: {fps:.2f}', position, cv2.FONT_HERSHEY_SIMPLEX,font_scale, color, thickness)
-
                 # Display FPS on the image
                 cv2.putText(image_display, f'FPS: {fps:.2f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
                             12, (255, 255, 0), 2)
