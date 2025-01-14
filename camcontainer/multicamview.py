@@ -17,19 +17,16 @@ DISPLAY_HEIGHT = 720
 
 cv2.setUseOptimized(True)
 
-
 def print_preamble():
     print('////////////////////////////////////////')
-    print('/// Drone CamToolbox MultiCam View ///////')
+    print('/// DroneCam Multicam View ///////')
     print('////////////////////////////////////////\n')
     print(flush=True)
 
-
-def add_camera_id_and_info(frame: numpy.ndarray, cam_id: str, fps: float, resolution: tuple) -> numpy.ndarray:
-    info_text = f'Cam: {cam_id} | FPS: {fps:.2f} | Res: {resolution[0]}x{resolution[1]}'
-    cv2.putText(frame, info_text, org=(10, 100), fontScale=3, color=(255, 255, 255), thickness=3, fontFace=cv2.FONT_HERSHEY_SIMPLEX)
-    return frame
-
+# def add_camera_id(frame: Frame, cam_id: str) -> Frame:
+#     cv2.putText(frame.as_opencv_image(), f'Cam: {cam_id}', org=(10, 100), fontScale=1,
+#                 color=255, thickness=1, fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL)
+#     return frame
 
 def resize_if_required(frame: Frame) -> numpy.ndarray:
     cv_frame = frame.as_opencv_image()
@@ -37,10 +34,8 @@ def resize_if_required(frame: Frame) -> numpy.ndarray:
         return cv2.resize(cv_frame, (FRAME_WIDTH, FRAME_HEIGHT), interpolation=cv2.INTER_LINEAR)
     return cv_frame
 
-
 def resize_for_display(frame: numpy.ndarray) -> numpy.ndarray:
     return cv2.resize(frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_LINEAR)
-
 
 def create_dummy_frame() -> numpy.ndarray:
     cv_frame = numpy.zeros((50, 640, 1), numpy.uint8)
@@ -51,13 +46,11 @@ def create_dummy_frame() -> numpy.ndarray:
 
     return cv_frame
 
-
 def try_put_frame(q: queue.Queue, cam: Camera, frame: Optional[Frame]):
     try:
         q.put_nowait((cam.get_id(), frame))
     except queue.Full:
         pass
-
 
 def set_nearest_value(cam: Camera, feat_name: str, feat_value: int):
     feat = cam.get_feature_by_name(feat_name)
@@ -70,7 +63,6 @@ def set_nearest_value(cam: Camera, feat_name: str, feat_value: int):
 
         val = max(min_, min(max_, (((feat_value - min_) // inc) * inc) + min_))
         feat.set(val)
-
 
 class FrameProducer(threading.Thread):
     def __init__(self, cam: Camera, frame_queue: queue.Queue):
@@ -112,7 +104,6 @@ class FrameProducer(threading.Thread):
                 self.cam.stop_streaming()
         try_put_frame(self.frame_queue, self.cam, None)
 
-
 class FrameConsumer:
     def __init__(self, frame_queue: queue.Queue):
         self.frame_queue = frame_queue
@@ -129,8 +120,14 @@ class FrameConsumer:
         else:
             self.camera_data[cam_id] = {"last_time": current_time, "fps": 0.0}
 
+    def log_frame_info(self, cam_id: str, frame: Frame):
+        # Log FPS and resolution to the console
+        fps = self.camera_data[cam_id].get("fps", 0.0)
+        resolution = (frame.get_width(), frame.get_height())
+        print(f"Camera {cam_id} - FPS: {fps:.2f}, Resolution: {resolution}")
+
     def run(self):
-        IMAGE_CAPTION = 'DroneCamToolbox Multi-cam View: Press <Enter> to exit'
+        IMAGE_CAPTION = 'DroneCam Multicam View: Press <Enter> to exit'
         KEY_CODE_ENTER = 13
 
         frames = {}
@@ -144,19 +141,14 @@ class FrameConsumer:
                 if frame:
                     frames[cam_id] = frame
                     self.calculate_fps(cam_id)
+                    self.log_frame_info(cam_id, frame)  # Log frame info here
                 else:
                     frames.pop(cam_id, None)
             except queue.Empty:
                 pass
 
             if frames:
-                cv_images = []
-                for cam_id in sorted(frames.keys()):
-                    frame = resize_if_required(frames[cam_id])
-                    fps = self.camera_data.get(cam_id, {}).get("fps", 0.0)
-                    resolution = (FRAME_WIDTH, FRAME_HEIGHT)
-                    annotated_frame = add_camera_id_and_info(frame, cam_id, fps, resolution)
-                    cv_images.append(resize_for_display(annotated_frame))
+                cv_images = [resize_for_display(resize_if_required(frames[cam_id])) for cam_id in sorted(frames.keys())]
                 display_frame = numpy.concatenate(cv_images, axis=1)
                 cv2.imshow(IMAGE_CAPTION, display_frame)
             else:
@@ -165,7 +157,6 @@ class FrameConsumer:
             if KEY_CODE_ENTER == cv2.waitKey(1):
                 cv2.destroyAllWindows()
                 alive = False
-
 
 class Application:
     def __init__(self):
@@ -206,7 +197,6 @@ class Application:
                     producer.stop()
                 for producer in self.producers.values():
                     producer.join()
-
 
 if __name__ == '__main__':
     print_preamble()
