@@ -5,20 +5,21 @@ import cv2
 import numpy as np
 import sys
 import os
+import time
+
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid")))
 from src.aprilgrid import Detector
 from vmbpy import *
-import time  # To add delay in frame production
 
 # Constants
 FRAME_QUEUE_SIZE = 20
-FRAME_HEIGHT = 1800
-FRAME_WIDTH = 1800
-TAG_SIZE = 0.02  # Tag size in meters (e.g., 10 cm)
+TAG_SIZE = 0.02  # Tag size in meters (e.g., 2 cm)
 FOCAL_LENGTH = 3940  # Example focal length in pixels
+
 
 def calculate_distance(tag_size, focal_length, tag_width_pixels):
     return (tag_size * focal_length) / tag_width_pixels
+
 
 def set_nearest_value(cam: Camera, feat_name: str, feat_value: int):
     feat = cam.get_feature_by_name(feat_name)
@@ -34,14 +35,27 @@ def set_nearest_value(cam: Camera, feat_name: str, feat_value: int):
         feat.set(val)
         print(f"Camera {cam.get_id()}: Using nearest valid value {val} for feature '{feat_name}'.")
 
-def resize_if_required(frame: Frame) -> np.ndarray:
-    cv_frame = frame.as_numpy_ndarray()
-    if (frame.get_height() != FRAME_HEIGHT) or (frame.get_width() != FRAME_WIDTH):
-        cv_frame = cv2.resize(cv_frame, (FRAME_WIDTH, FRAME_HEIGHT), interpolation=cv2.INTER_AREA)
-    # Ensure the image is two-dimensional (grayscale)
-    if cv_frame.ndim == 3 and cv_frame.shape[2] == 1:
-        cv_frame = cv_frame.squeeze(axis=2)
-    return cv_frame
+
+def set_max_resolution_and_fps(cam: Camera):
+    """
+    Sets the camera's resolution and frame rate to their maximum supported values.
+    """
+    height_feat = cam.get_feature_by_name('Height')
+    width_feat = cam.get_feature_by_name('Width')
+    framerate_feat = cam.get_feature_by_name('AcquisitionFrameRate')
+
+    max_height = height_feat.get_range()[1]
+    max_width = width_feat.get_range()[1]
+
+    set_nearest_value(cam, 'Height', max_height)
+    set_nearest_value(cam, 'Width', max_width)
+
+    if framerate_feat.is_writeable():
+        max_framerate = framerate_feat.get_range()[1]
+        set_nearest_value(cam, 'AcquisitionFrameRate', int(max_framerate))
+
+    print(f"Camera {cam.get_id()}: Resolution set to {max_width}x{max_height}, FPS maximized.")
+
 
 class FrameProducer(threading.Thread):
     def __init__(self, cam: Camera, frame_queue: queue.Queue):
@@ -55,8 +69,6 @@ class FrameProducer(threading.Thread):
             frame_cpy = copy.deepcopy(frame)
             try:
                 self.frame_queue.put_nowait((cam.get_id(), frame_cpy))
-                print(f"Frame added to queue for camera {cam.get_id()}")
-                time.sleep(0.05)  # Adjust delay as needed
             except queue.Full:
                 print(f"Frame queue is full for camera {cam.get_id()}")
         cam.queue_frame(frame)
@@ -65,8 +77,7 @@ class FrameProducer(threading.Thread):
         self.killswitch.set()
 
     def setup_camera(self):
-        set_nearest_value(self.cam, 'Height', FRAME_HEIGHT)
-        set_nearest_value(self.cam, 'Width', FRAME_WIDTH)
+        set_max_resolution_and_fps(self.cam)
         try:
             self.cam.ExposureTime.set(20000)
             self.cam.Gain.set(20)
@@ -93,11 +104,14 @@ class FrameProducer(threading.Thread):
             except queue.Full:
                 pass
 
+
 class FrameConsumer:
     def __init__(self, frame_queue: queue.Queue):
         self.frame_queue = frame_queue
         self.detector = Detector("t16h5b1")
         self.running = True
+        self.last_time = {}
+        self.frame_counts = {}
 
     def run(self):
         IMAGE_CAPTION = 'AprilTag Detection: Press <Enter> to exit'
@@ -113,41 +127,33 @@ class FrameConsumer:
                     cam_id, frame = self.frame_queue.get_nowait()
                     if frame:
                         frames[cam_id] = frame
-                        print(f"Frame received from queue for camera {cam_id}")
+                        # Initialize FPS tracking for new cameras
+                        if cam_id not in self.last_time:
+                            self.last_time[cam_id] = time.time()
+                            self.frame_counts[cam_id] = 0
                     else:
                         frames.pop(cam_id, None)
             except queue.Empty:
                 pass
 
             if frames:
-                cv_images = {}
-                for cam_id in sorted(frames.keys()):
-                    frame = frames[cam_id]
-                    gray_image = resize_if_required(frame)
+                # Combine frames into a single image for side-by-side display
+                combined_image = None
+                for cam_id, frame in frames.items():
+                    gray_image = frame.as_numpy_ndarray()
                     gray_image = self.detect_and_draw_apriltags(gray_image, cam_id)
-                    cv_images[cam_id] = gray_image
 
-                combined_image = np.concatenate(list(cv_images.values()), axis=1)
+                    # Combine the images horizontally (side by side)
+                    if combined_image is None:
+                        combined_image = gray_image
+                    else:
+                        combined_image = np.hstack((combined_image, gray_image))
 
-                max_display_height = 1080
-                max_display_width = 1920
-                height, width = combined_image.shape[:2]
-                scaling_factor = min(max_display_width / width, max_display_height / height)
-
-                if scaling_factor < 1:
-                    new_width = int(width * scaling_factor)
-                    new_height = int(height * scaling_factor)
-                    resized_combined_image = cv2.resize(combined_image, (new_width, new_height),
-                                                        interpolation=cv2.INTER_AREA)
-                else:
-                    resized_combined_image = combined_image
-
-                cv2.imshow(IMAGE_CAPTION, resized_combined_image)
+                cv2.imshow(IMAGE_CAPTION, combined_image)
             else:
                 dummy_frame = np.zeros((50, 640, 1), np.uint8)
-                dummy_frame[:] = 0
                 cv2.putText(dummy_frame, 'No Stream available. Please connect a Camera.', org=(30, 30),
-                            fontScale=1, color=255, thickness=1, fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL)
+                           fontScale=1, color=255, thickness=1, fontFace=cv2.FONT_HERSHEY_COMPLEX_SMALL)
                 cv2.imshow(IMAGE_CAPTION, dummy_frame)
 
             key = cv2.waitKey(10) & 0xFF
@@ -157,41 +163,48 @@ class FrameConsumer:
 
     def detect_and_draw_apriltags(self, gray_image, cam_id):
         try:
-            print(f"Processing frame for camera {cam_id}")
-            cv2.imshow(f'Raw Camera Image {cam_id}', gray_image)
-            cv2.waitKey(1)
+            detections = self.detector.detect(gray_image)
 
-            gray_image_blurred = cv2.GaussianBlur(gray_image, (5, 5), 0)
-            print("Applied Gaussian blur.")
-
-            detections = self.detector.detect(gray_image_blurred)
-            print(f"Number of detections for camera {cam_id}: {len(detections)}")
-
+            # Convert grayscale image to color for displaying
             image_display = cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
 
+            # Draw detected AprilTags on the image
             for detection in detections:
                 corners = detection.corners.astype(int)
                 cv2.polylines(image_display, [corners], isClosed=True, color=(0, 255, 0), thickness=2)
                 center = tuple(detection.center.astype(int))
                 cv2.circle(image_display, center, radius=5, color=(0, 0, 255), thickness=-1)
-                
+
                 tag_width_pixels = np.linalg.norm(corners[0] - corners[1])
                 distance = calculate_distance(TAG_SIZE, FOCAL_LENGTH, tag_width_pixels)
-                print(f"Camera {cam_id} - Tag ID: {detection.tag_id}, Distance: {distance:.2f} meters")
-                
+
                 cv2.putText(image_display, f'ID: {detection.tag_id}, Dist: {distance:.2f}m',
                             (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+            # Calculate and display FPS
+            self.frame_counts[cam_id] += 1
+            current_time = time.time()
+            elapsed_time = current_time - self.last_time[cam_id]
+
+            if elapsed_time >= 1.0:  # Update FPS every second
+                fps = self.frame_counts[cam_id] / elapsed_time
+                self.last_time[cam_id] = current_time
+                self.frame_counts[cam_id] = 0
+
+                # Display FPS on the image
+                cv2.putText(image_display, f'FPS: {fps:.2f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
+                            0.6, (255, 255, 0), 2)
 
             return image_display
         except Exception as e:
             print(f"Error during AprilTag detection for camera {cam_id}: {e}")
             return cv2.cvtColor(gray_image, cv2.COLOR_GRAY2BGR)
 
+
 class Application:
     def __init__(self):
         self.frame_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
         self.producers = {}
-        self.producers_lock = threading.Lock()
 
     def run(self):
         vmb = VmbSystem.get_instance()
@@ -205,7 +218,6 @@ class Application:
                 print(f"Number of cameras detected: {len(cameras)}")
 
             for cam in cameras:
-                print(f"Starting producer for camera {cam.get_id()}")
                 producer = FrameProducer(cam, self.frame_queue)
                 self.producers[cam.get_id()] = producer
                 producer.start()
@@ -214,11 +226,10 @@ class Application:
             consumer.run()
 
             for producer in self.producers.values():
-                print(f"Stopping producer for camera {producer.cam.get_id()}")
                 producer.stop()
                 producer.join()
 
+
 if __name__ == '__main__':
-    print("Starting Application")
     app = Application()
     app.run()
