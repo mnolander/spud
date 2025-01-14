@@ -133,7 +133,7 @@ class FrameConsumer:
         frames = {}
         alive = True
 
-        cv2.namedWindow(IMAGE_CAPTION, cv2.WINDOW_NORMAL)
+        cv2.namedWindow(IMAGE_CAPTION, cv2.WINDOW_AUTOSIZE)
 
         while alive:
             try:
