@@ -1,11 +1,21 @@
 import numpy as np
 import cv2
+
+import sys
+import os
+
+# Add the src directory to the path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
+
+# Now you can import aprilgrid
 from aprilgrid import Detector
 from glob import glob
 import time  # Import the time module
 
 if __name__ == '__main__':    
-    file_list = sorted(glob("C:/Users/Toby/Desktop/CapstoneProject/enhanced_python_aprilgrid/data/image_data\initial_png_single_camera/*.png"))
+    base_dir = os.path.dirname(os.path.abspath(__file__))  # Get the absolute path of the current script directory
+    image_dir = os.path.join(base_dir, '..', 'data', 'image_data', 'initial_png_single_camera')  # Resolve relative path
+    file_list = sorted(glob(os.path.join(image_dir, '*.png')))
     detector = Detector('t16h5b1')
     detection_times = []  # List to store detection times
 
