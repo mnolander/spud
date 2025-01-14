@@ -178,8 +178,15 @@ class FrameConsumer:
                 tag_width_pixels = np.linalg.norm(corners[0] - corners[1])
                 distance = calculate_distance(TAG_SIZE, FOCAL_LENGTH, tag_width_pixels)
 
+                # Increase the font scale and adjust position for better visibility
+                font_scale = 1.5  # Larger font size
+                thickness = 3  # Make the text thicker for better visibility
+                color = (0, 255, 0)  # Change text color (green for example)
+
+                text_position = (center[0] + 20, center[1] - 20)  # Change this to suit your needs
+
                 cv2.putText(image_display, f'ID: {detection.tag_id}, Dist: {distance:.2f}m',
-                            (center[0] + 10, center[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+                            text_position, cv2.FONT_HERSHEY_SIMPLEX, font_scale, color, thickness)
 
             # Calculate and display FPS
             self.frame_counts[cam_id] += 1
@@ -191,9 +198,18 @@ class FrameConsumer:
                 self.last_time[cam_id] = current_time
                 self.frame_counts[cam_id] = 0
 
+#                 # Adjusting the font scale, thickness, and position for better visibility
+#                 font_scale = 1.5  # Set the desired font size
+#                 thickness = 3  # Make the text thicker for visibility
+#                 color = (255, 255, 0)  # Use a bright color like yellow for contrast
+#                 position = (10, 30)  # Position of the FPS text
+
+# # Display FPS on the image
+#                 cv2.putText(image_display, f'FPS: {fps:.2f}', position, cv2.FONT_HERSHEY_SIMPLEX,font_scale, color, thickness)
+
                 # Display FPS on the image
                 cv2.putText(image_display, f'FPS: {fps:.2f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX,
-                            0.6, (255, 255, 0), 2)
+                            12, (255, 255, 0), 2)
 
             return image_display
         except Exception as e:
