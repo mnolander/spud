@@ -25,7 +25,7 @@ class Detector:
         # step 1 resize
         # max_size = np.max(img.shape)
         #start_time = time.time()
-        im_blur = cv2.GaussianBlur(img, (3, 3), 1)
+        im_blur = cv2.bilateralFilter(img, 9, 75, 75) # cv2.GaussianBlur(img, (3, 3), 1)
         #blur_time = time.time() - start_time
         #print(blur_time)
         # im_blur_resize = im_blur.copy()
@@ -41,7 +41,7 @@ class Detector:
         #quads_time = time.time() - start_time
         #print(quads_time)
         # refine corner
-        winSize = (4, 4)
+        winSize = (7, 7) # original value was 4,4
         zeroZone = (-1, -1)
         criteria = (cv2.TERM_CRITERIA_EPS + cv2.TermCriteria_COUNT, 40, 0.001)
 
@@ -64,7 +64,7 @@ class Detector:
         #start_time = time.time()
         #threshim = self.threshold(im)
         threshim = cv2.adaptiveThreshold(im, 255, cv2.ADAPTIVE_THRESH_MEAN_C, 
-                                          cv2.THRESH_BINARY, 199, 5) 
+                                          cv2.THRESH_BINARY, 11, 2) # Original value is 199,5
         #thresh_time = time.time() - start_time
         #print(thresh_time)
         (cnts, _) = cv2.findContours(threshim,
@@ -74,6 +74,8 @@ class Detector:
         if self.debug_level > 0:
             h, w = im.shape[0], im.shape[1]
             output = np.zeros((h, w, 3), dtype=np.uint8)
+            cv2.imshow("Thresholded image", threshim)
+            cv2.waitKey(0)
             if self.debug_level == 1:
                 for c in cnts:
                     cv2.drawContours(output, [c], -1, random_color(), 2)
