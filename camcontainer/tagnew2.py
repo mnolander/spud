@@ -5,7 +5,7 @@ import time
 from typing import Optional
 
 import cv2
-import numpy
+import numpy as np
 from vmbpy import *
 
 # -----------------------------------------------------------------------------
