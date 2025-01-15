@@ -5,7 +5,7 @@ import time
 from typing import Optional
 
 import cv2
-import numpy
+import numpy as np
 from vmbpy import *
 
 # -----------------------------------------------------------------------------
@@ -15,7 +15,7 @@ import os
 
 # If aprilgrid is under ../src:
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid", "src")))
-from aprilgrid import Detector  # Ensure AprilGrid is installed and accessible
+from aprilgrid import Detector  
 import numpy as np
 # -----------------------------------------------------------------------------
 
@@ -25,6 +25,9 @@ FRAME_HEIGHT = 3036
 FRAME_WIDTH = 4024
 DISPLAY_WIDTH = 720
 DISPLAY_HEIGHT = 720
+
+# Number of parallel threads for AprilTag detection
+NUM_DETECTOR_THREADS = 4
 
 cv2.setUseOptimized(True)
 
@@ -147,15 +150,14 @@ class FrameProducer(threading.Thread):
 # ------------- DetectorThread -------------
 class DetectorThread(threading.Thread):
     """
-    Runs AprilTag detection in a separate thread, pulling frames from detection_queue
-    and pushing results to detection_result_queue.
+    A single worker thread that pulls frames from a shared detection_queue,
+    runs AprilTag detection, and puts results into a shared detection_result_queue.
     """
 
     def __init__(self, detection_queue: queue.Queue, detection_result_queue: queue.Queue):
         super().__init__()
         self.detection_queue = detection_queue
         self.detection_result_queue = detection_result_queue
-        # Initialize your AprilTag detector (adjust the tag family as needed)
         self.detector = Detector('t16h5b1')
         self.killswitch = threading.Event()
 
@@ -168,7 +170,6 @@ class DetectorThread(threading.Thread):
                 # Get a (cam_id, frame) pair from the detection queue
                 cam_id, frame = self.detection_queue.get(timeout=0.01)
             except queue.Empty:
-                # No frames to detect at the moment
                 continue
 
             # If frame is None, indicates camera or streaming ended
@@ -191,23 +192,25 @@ class FrameConsumer:
     """
     Main consumer class that:
       1) Pulls frames from the frame_queue.
-      2) Hands them off to the detector thread (detection_queue).
+      2) Hands them off to the parallel detector threads (detection_queue).
       3) Receives detection results (detection_result_queue).
       4) Draws detection overlays and displays in a window.
     """
 
-    def __init__(self, frame_queue: queue.Queue):
+    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 4):
         # The main queue from the producers
         self.frame_queue = frame_queue
 
-        # Queues for handing off frames to the detector thread and
-        # receiving detection results.
+        # Queues for handing off frames to the detector threads
         self.detection_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
         self.detection_result_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
 
-        # Create and start the detector thread
-        self.detector_thread = DetectorThread(self.detection_queue, self.detection_result_queue)
-        self.detector_thread.start()
+        # Create multiple parallel detector threads
+        self.detector_threads = []
+        for i in range(num_detector_threads):
+            dt = DetectorThread(self.detection_queue, self.detection_result_queue)
+            dt.start()
+            self.detector_threads.append(dt)
 
         # For tracking FPS, etc.
         self.camera_data = {}
@@ -252,7 +255,7 @@ class FrameConsumer:
                     self.log_frame_info(cam_id, frame)
                     self.last_frames[cam_id] = frame
 
-                    # Offload to detection thread
+                    # Offload to one of the detector threads
                     try:
                         self.detection_queue.put_nowait((cam_id, frame))
                     except queue.Full:
@@ -262,6 +265,7 @@ class FrameConsumer:
                     # Frame is None => camera missing or ended
                     self.last_frames.pop(cam_id, None)
                     self.latest_results.pop(cam_id, None)
+                    # Notify detector threads that this camera ended
                     try:
                         self.detection_queue.put_nowait((cam_id, None))
                     except queue.Full:
@@ -271,7 +275,7 @@ class FrameConsumer:
                 # No new frames at the moment
                 pass
 
-            # 2. Collect detection results from the detector thread
+            # 2. Collect detection results from any detector thread
             while True:
                 try:
                     cam_id_res, gray_res, detections_res = self.detection_result_queue.get_nowait()
@@ -341,9 +345,11 @@ class FrameConsumer:
                 cv2.destroyAllWindows()
                 alive = False
 
-        # Stop the detector thread gracefully
-        self.detector_thread.stop()
-        self.detector_thread.join()
+        # Stop the parallel detector threads gracefully
+        for dt in self.detector_threads:
+            dt.stop()
+        for dt in self.detector_threads:
+            dt.join()
 
 # ------------- Application -------------
 class Application:
@@ -376,7 +382,7 @@ class Application:
         """
         Start all cameras currently available, register event handlers, and launch the consumer.
         """
-        consumer = FrameConsumer(self.frame_queue)
+        consumer = FrameConsumer(self.frame_queue, num_detector_threads=NUM_DETECTOR_THREADS)
         with VmbSystem.get_instance() as vmb:
             # Start producers for all currently detected cameras
             for cam in vmb.get_all_cameras():
