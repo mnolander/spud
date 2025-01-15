@@ -89,6 +89,9 @@ class FrameProducer(threading.Thread):
             self.cam.Gain.set(16)
             self.cam.BinningHorizontal.set(1)
             self.cam.BinningVertical.set(1)
+
+            self.cam.AcquisitionFrameRateEnable.set(True)
+            self.cam.AcquisitionFrameRate.set(35.0)
         except (AttributeError, VmbFeatureError):
             pass
 
