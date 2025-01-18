@@ -1,18 +1,17 @@
 # Use the official ROS Noetic (Ubuntu 20.04) image as the base
-FROM ros:noetic-ros-core-focal
+FROM osrf/ros:noetic-desktop-full
 
 # Set environment to noninteractive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Update and install system dependencies, including Kalibr dependencies, Xvfb, and ROS packages
+# Update and install system dependencies and ROS packages (no Kalibr-related packages)
 RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-dev \
     usbutils \
     ros-noetic-usb-cam \
-    xvfb \
     ros-noetic-rospy \
-    x11-apps \
+    ros-noetic-bag \
     build-essential \
     cmake \
     git \
@@ -37,34 +36,17 @@ RUN apt-get update && apt-get install -y \
 # Set Python3 as default
 RUN ln -s /usr/bin/python3 /usr/bin/python
 
-# Set environment variable for GENICAM
-ENV GENICAM_GENTL64_PATH=/home/docker/camcontainer/VimbaX_2024-1/cti
-ENV VIMBAX_HOME /home/docker/camcontainer/VimbaX_2024-1/api/python
-ENV LD_LIBRARY_PATH $VIMBAX_HOME/api/lib:$LD_LIBRARY_PATH
-
-# Copy the local "camcontainer" directory into the Docker image - Replace "camcontainer" with the name of your directory
-COPY camcontainer /home/docker/camcontainer
-
-# # Set the working directory
-WORKDIR /home/docker/camcontainer
-RUN mkdir -p /etc/udev/rules.d
-
-# Clone and set up Kalibr
-# RUN git clone https://github.com/ethz-asl/kalibr.git /home/docker/camcontainer/kalibr && \
-#     mkdir -p /home/docker/camcontainer/kalibr_workspace/src && \
-#     ln -s /home/docker/camcontainer/kalibr /home/docker/camcontainer/kalibr_workspace/src/kalibr && \
-#     cd /home/docker/camcontainer/kalibr_workspace && \
-#     /bin/bash -c "source /opt/ros/noetic/setup.bash && catkin init && catkin build"
-
-# Add Kalibr environment setup to bashrc
-# RUN echo "source /opt/ros/noetic/setup.bash" >> ~/.bashrc && \
-#     echo "source /home/docker/camcontainer/kalibr_workspace/devel/setup.bash" >> ~/.bashrc
-
-# Expose any ports, if necessary (e.g., for ROS nodes)
+# Expose any ports for ROS (optional)
 EXPOSE 11311
 
 # Set permissions for access to USB devices
 RUN usermod -aG dialout root
 
-# Set up the entrypoint to run a bash shell
-CMD ["/bin/bash"]
+# Set the working directory for your Python script
+WORKDIR /home/docker
+
+# Copy your Python script into the container (replace 'record_bag.py' with your script)
+COPY record_bag.py /home/docker/record_bag.py
+
+# Set up the entrypoint to run the Python script that records a bag file
+CMD ["python3", "/home/docker/record_bag.py"]
