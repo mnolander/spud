@@ -1,5 +1,5 @@
 # Use the official ROS Noetic (Ubuntu 20.04) image as the base
-FROM ros:noetic-ros-core-focal
+FROM osrf/ros:noetic-desktop-full
 
 # Set environment to noninteractive to avoid prompts during installation
 ENV DEBIAN_FRONTEND=noninteractive
