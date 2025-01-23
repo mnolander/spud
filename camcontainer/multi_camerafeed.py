@@ -17,8 +17,8 @@ import rosbag
 import time  # For timestamping the bag files
 
 FRAME_QUEUE_SIZE = 10
-FRAME_HEIGHT = 2100
-FRAME_WIDTH = 2100
+FRAME_HEIGHT = 3036
+FRAME_WIDTH = 4024
 
 
 def print_preamble():
@@ -111,11 +111,11 @@ class FrameProducer(threading.Thread):
 
         # Try to enable automatic exposure time setting
         try:
-            self.cam.ExposureAuto.set('Once')
-            self.cam.ExposureTime.set(5000)
-            self.cam.Gain.set(25)
-            self.cam.BinningHorizontal.set(1)
-            self.cam.BinningVertical.set(1)
+            self.cam.ExposureAuto.set('Off')
+            self.cam.ExposureTime.set(16000)
+            self.cam.Gain.set(16)
+            self.cam.BinningHorizontal.set(2)
+            self.cam.BinningVertical.set(2)
         except (AttributeError, VmbFeatureError):
             self.log.info('Camera {}: Failed to set Feature \'ExposureAuto\'.'.format(
                           self.cam.get_id()))
