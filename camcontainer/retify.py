@@ -51,19 +51,28 @@ class StereoRectifier:
         # Rectification maps
         self.map1x, self.map1y = cv2.initUndistortRectifyMap(K1, dist_coeffs1, self.R1_rect, self.P1, self.image_size, cv2.CV_32F)
         self.map2x, self.map2y = cv2.initUndistortRectifyMap(K2, dist_coeffs2, self.R2_rect, self.P2, self.image_size, cv2.CV_32F)
+        
+        print("self.P1")
+        print(self.P1)
+        print("self.P2")
+        print(self.P2)
 
     def rectify_images(self, image_path_cam0, image_path_cam1):
         # Load images
         image_cam0 = cv2.imread(image_path_cam0)
         image_cam1 = cv2.imread(image_path_cam1)
+        
+        # bin the image to 2012, 1518 from the 4k one
+        bin_factor = 2
+        height, width = image_cam0.shape[:2]
+        height, width = image_cam1.shape[:2]
+        
+        image_cam0 = cv2.resize(image_cam0, (width // bin_factor, height // bin_factor), interpolation=cv2.INTER_AREA)
+        image_cam1 = cv2.resize(image_cam1, (width // bin_factor, height // bin_factor), interpolation=cv2.INTER_AREA)
 
         if image_cam0 is None or image_cam1 is None:
             print("Error: Could not load one or both images.")
             return
-
-        # Resize images if necessary
-        image_cam0 = cv2.resize(image_cam0, self.image_size)
-        image_cam1 = cv2.resize(image_cam1, self.image_size)
 
         # Apply rectification
         rectified_cam0 = cv2.remap(image_cam0, self.map1x, self.map1y, interpolation=cv2.INTER_LINEAR)
@@ -76,12 +85,12 @@ class StereoRectifier:
         cv2.destroyAllWindows()
 
         # Save images
-        cv2.imwrite('rectified_left.jpg', rectified_cam0)
-        cv2.imwrite('rectified_right.jpg', rectified_cam1)
+        cv2.imwrite('rectified_left2.jpg', rectified_cam0)
+        cv2.imwrite('rectified_right2.jpg', rectified_cam1)
 
         print("Rectified images saved successfully.")
 
 # Example usage
 if __name__ == "__main__":
     rectifier = StereoRectifier()
-    rectifier.rectify_images('camera_DEV_1AB22C00E123_image_0.png', 'camera_DEV_1AB22C00E588_image_0.png')
+    rectifier.rectify_images('camera_DEV_1AB22C00E123_image_2.png', 'camera_DEV_1AB22C00E588_image_2.png')
