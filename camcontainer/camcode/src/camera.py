@@ -23,8 +23,11 @@ def set_nearest_value(cam: 'Camera', feat_name: str, feat_value: int):
         feat.set(val)
 
 class FrameProducer(threading.Thread):
-    """Captures frames from a camera in a separate thread."""
-    
+    """
+    Captures frames from a camera in a separate thread.
+    For each completed frame, adds it to the shared frame_queue.
+    """
+
     def __init__(self, cam: 'Camera', frame_queue: queue.Queue):
         super().__init__()
         self.cam = cam
@@ -38,17 +41,32 @@ class FrameProducer(threading.Thread):
         cam.queue_frame(frame)
 
     def stop(self):
-        """Stop this thread."""
+        """Stop this thread's loop."""
         self.killswitch.set()
 
     def setup_camera(self):
         """Configure camera parameters."""
         set_nearest_value(self.cam, 'Height', FRAME_HEIGHT)
         set_nearest_value(self.cam, 'Width', FRAME_WIDTH)
+
+        try:
+            self.cam.ExposureAuto.set('Off')
+            self.cam.ExposureTime.set(20000)
+            self.cam.Gain.set(0.000000001)
+            self.cam.BinningHorizontal.set(2)
+            self.cam.BinningVertical.set(2)
+
+            self.cam.AcquisitionFrameRateEnable.set(True)
+            self.cam.AcquisitionFrameRate.set(30.0)
+
+        except (AttributeError, VmbFeatureError):
+            pass
+
+        # Force Mono8 pixel format
         self.cam.set_pixel_format(PixelFormat.Mono8)
 
     def run(self):
-        """Main thread loop."""
+        """Main thread loop: open camera, start streaming until killswitch is set."""
         with self.cam:
             self.setup_camera()
             try:
@@ -56,4 +74,5 @@ class FrameProducer(threading.Thread):
                 self.killswitch.wait()
             finally:
                 self.cam.stop_streaming()
+        # Signal to consumer that camera is missing by sending None
         try_put_frame(self.frame_queue, self.cam, None)
