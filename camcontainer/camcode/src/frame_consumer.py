@@ -1,11 +1,13 @@
 import queue
 import cv2
+import threading
 from detector import DetectorThread
 from constants import FRAME_QUEUE_SIZE, NUM_DETECTOR_THREADS
 from vmbpy import *
 from constants import *
 from frame_processing import *
 from utils import *
+from stereo_processor import StereoProcessor
 
 class FrameConsumer:
     """
@@ -30,6 +32,9 @@ class FrameConsumer:
             dt = DetectorThread(self.detection_queue, self.detection_result_queue)
             dt.start()
             self.detector_threads.append(dt)
+
+        # Initialize the stereo processor for rectification 
+        self.stereo_processor = StereoProcessor()
 
         # For tracking FPS, etc.
         self.camera_data = {}
@@ -61,6 +66,36 @@ class FrameConsumer:
                 if frame:
                     # Valid frame
                     self.log_frame_info(cam_id, frame)
+                    opencv_image = frame.as_opencv_image()  # Convert to OpenCV format
+                    self.last_frames[cam_id] = opencv_image
+
+                    if len(self.last_frames) >= 2:
+                        cam_ids = list(self.last_frames.keys())
+                    
+                        # Get frames for rectification
+                        image_cam0 = self.last_frames[cam_ids[0]]
+                        image_cam1 = self.last_frames[cam_ids[1]]
+                        
+                        self.stereo_processor.rectify_frames_async(image_cam0, image_cam1, cam_ids[0], cam_ids[1])
+
+                        with self.stereo_processor.lock:
+                                if cam_ids[0] in self.stereo_processor.rectified_frames and cam_ids[1] in self.stereo_processor.rectified_frames:
+                                    rectified_cam0 = self.stereo_processor.rectified_frames[cam_ids[0]]
+                                    rectified_cam1 = self.stereo_processor.rectified_frames[cam_ids[1]]
+
+                                    # Convert to grayscale
+                                    gray_cam0 = cv2.cvtColor(rectified_cam0, cv2.COLOR_BGR2GRAY)
+                                    gray_cam1 = cv2.cvtColor(rectified_cam1, cv2.COLOR_BGR2GRAY)
+
+                                    if cam_ids[0] not in self.frame_counts:
+                                        self.frame_counts[cam_ids[0]] = 0
+                                    if cam_ids[1] not in self.frame_counts:
+                                        self.frame_counts[cam_ids[1]] = 0
+
+                                    self.frame_counts[cam_ids[0]] += 1
+                                    self.frame_counts[cam_ids[1]] += 1
+
+
                     self.last_frames[cam_id] = frame
 
                     # --- MODIFIED: Counting frames per camera to skip if needed ---
@@ -161,3 +196,4 @@ class FrameConsumer:
             dt.stop()
         for dt in self.detector_threads:
             dt.join()
+            
