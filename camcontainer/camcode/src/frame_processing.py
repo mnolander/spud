@@ -8,9 +8,17 @@ def resize_for_display(frame: np.ndarray) -> np.ndarray:
     """Downscale for display in an OpenCV window."""
     return cv2.resize(frame, (DISPLAY_WIDTH, DISPLAY_HEIGHT), interpolation=cv2.INTER_LINEAR)
 
-def frame_to_gray_np(frame: 'Frame') -> np.ndarray:
-    """Convert a Vmb Frame to a 2D NumPy grayscale image."""
-    return frame.as_opencv_image()  # Already grayscale
+def frame_to_gray_np(frame):
+    """
+    Convert a frame to grayscale NumPy array. 
+    If the frame is already a NumPy array, return it directly.
+    """
+    if isinstance(frame, np.ndarray):  
+        return frame  # Already a NumPy array
+
+    # Otherwise, convert from Vimba Frame format
+    return frame.as_opencv_image()  # Convert to OpenCV-compatible format
+
 
 def downscale_for_detection(gray_full: np.ndarray) -> np.ndarray:
     """Downscale image for detection to reduce CPU load."""

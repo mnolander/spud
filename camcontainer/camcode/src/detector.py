@@ -2,29 +2,34 @@ import queue
 import numpy as np
 import cv2
 import threading
-# -----------------------------------------------------------------------------
-# --- ADDED FOR APRILTAG DETECTION ---
+import logging
 import sys
 import os
 
 # Dynamically add the enhanced_python_aprilgrid/src directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid", "src")))
 
-# Now, you can import the Detector class
+# Import AprilTag Detector
 from aprilgrid import Detector
-
-import numpy as np
-# -----------------------------------------------------------------------------
 
 from frame_processing import downscale_for_detection, frame_to_gray_np
 from utils import *
 from frame_processing import *
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+cv2.setUseOptimized(True)  # Enables OpenCV optimization
+cv2.setNumThreads(4)  # Use multiple CPU threads for processing
+
+
 class DetectorThread(threading.Thread):
     """
-    A single worker thread that pulls frames from a shared detection_queue,
-    runs AprilTag detection on a downscaled image (if enabled),
-    and puts results into a shared detection_result_queue.
+    A worker thread that:
+      - Pulls frames from the detection_queue
+      - Runs AprilTag detection
+      - Stores results in detection_result_queue
     """
 
     def __init__(self, detection_queue: queue.Queue, detection_result_queue: queue.Queue):
@@ -40,14 +45,14 @@ class DetectorThread(threading.Thread):
             "DEV_1AB22C00E588": [7074.560676188498, 7062.053568655379, 2037.2857092571062, 1549.725255281428]
         }
 
-        # cam dis_coefficient
+        # Camera distortion coefficients
         self.camera_dis = {
-            "DEV_1AB22C00E123": [-0.29254001960563103, 0.8273391822433487, -0.0019010343025743829, -7.179588729872542e-05],
-            "DEV_1AB22C00E588": [-0.2706765105538779, 0.6911079417360364, -0.0008490143333884144, -0.0005189366405546061]
+            "DEV_1AB22C00E123": [-0.29254, 0.82733, -0.0019, -7.17e-05],
+            "DEV_1AB22C00E588": [-0.27067, 0.69110, -0.00084, -0.00051]
         }
 
-        # Physical size of the AprilTag (in meters)
-        self.tag_size = 0.018  # Example: 16.2 cm
+        # Physical size of the AprilTag (meters)
+        self.tag_size = 0.018  
 
     def stop(self):
         self.killswitch.set()
@@ -55,24 +60,41 @@ class DetectorThread(threading.Thread):
     def run(self):
         while not self.killswitch.is_set():
             try:
-                # Get a (cam_id, frame) pair from the detection queue
                 cam_id, frame = self.detection_queue.get(timeout=0.01)
             except queue.Empty:
                 continue
 
             if frame is None:
-                # Camera or stream ended
+                logger.warning(f"Detector received an empty frame from {cam_id}")
                 self.detection_result_queue.put((cam_id, None, None))
                 continue
+
+            logger.info(f"Processing frame from {cam_id}")
 
             # Convert to grayscale full resolution
             gray_full = frame_to_gray_np(frame)
 
-            # Downscale for detection
-            gray_small = downscale_for_detection(gray_full)
+            # Validate frame
+            if not isinstance(gray_full, np.ndarray) or gray_full.size == 0:
+                logger.error(f"Invalid frame from {cam_id}, skipping detection")
+                continue
 
-            # Perform detection at lower res
+            # Downscale for detection
+            # gray_small = downscale_for_detection(gray_full)
+            gray_small = gray_full
+
+            if gray_small is None or gray_small.size == 0:
+                logger.error(f"Downscaled frame is empty from {cam_id}")
+                continue
+
+            # Perform detection
             detections_small = self.detector.detect(gray_small)
+
+            # Check if detections were found
+            if not detections_small:
+                logger.warning(f"No detections found in {cam_id}")
+            else:
+                logger.info(f"Detected {len(detections_small)} AprilTags in {cam_id}")
 
             # Scale corners back to full resolution
             scale_x = gray_full.shape[1] / gray_small.shape[1]
@@ -84,23 +106,23 @@ class DetectorThread(threading.Thread):
 
                 # Calculate distance if camera intrinsics are available
                 if cam_id in self.camera_intrinsics:
+                    print("dection gotten")
+                    # distance = compute_distance(self.camera_intrinsics[cam_id], self.tag_size, scaled_corners)
+                    # pos = compute_pose(
+                    #     self.camera_intrinsics[cam_id],
+                    #     self.tag_size,
+                    #     np.array([corner[0] for corner in scaled_corners], dtype=np.float32),
+                    #     self.camera_dis[cam_id]
+                    # )
 
-                    distance = compute_distance(self.camera_intrinsics[cam_id], self.tag_size, scaled_corners)
-                    pos = compute_pose(
-                        self.camera_intrinsics[cam_id],
-                        self.tag_size,
-                        np.array([corner[0] for corner in scaled_corners], dtype=np.float32),
-                        self.camera_dis[cam_id]
-                    )
-                    print(pos)
-                    
-                    # Save the data to a JSON file
-                    # with open("pose_data.json", "w") as json_file:
-                    #     json.dump(pos, json_file, indent=4)  # `indent=4` makes the JSON file readable
-                    if distance is not None:
-                        print(f"Camera {cam_id} - Tag ID {det.tag_id}: Distance = {distance:.2f} meters")
-                    else: # Invalid corner structure
-                        print(f"Camera {cam_id} - Tag ID {det.tag_id}: Invalid corner structure")
+                    # # Log detected tag position
+                    # if pos:
+                    #     logger.info(f"Camera {cam_id} - Tag {det.tag_id}: {pos['pose']['position']}")
+
+                    # if distance is not None:
+                    #     logger.info(f"Camera {cam_id} - Tag {det.tag_id}: Distance = {distance:.2f} meters")
+                    # else:
+                    #     logger.warning(f"Camera {cam_id} - Tag {det.tag_id}: Invalid corner structure")
 
                 # Append detection result
                 detections_fullres.append({
