@@ -57,7 +57,7 @@ class FrameConsumer:
     def log_frame_info(self, cam_id: str, frame: 'Frame'):
         """Log frame resolution."""
         resolution = (frame.get_width(), frame.get_height())
-        print(f"Camera {cam_id} - Resolution: {resolution}")
+        # print(f"Camera {cam_id} - Resolution: {resolution}")
 
     def run(self):
         """Main loop: fetch frames, pass to detector, fetch results, draw and display."""

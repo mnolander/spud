@@ -92,7 +92,7 @@ class DetectorThread(threading.Thread):
                 self.detection_result_queue.put((cam_id, None, None, None))
                 continue
 
-            logger.info(f"Processing frame from {cam_id}")
+            # logger.info(f"Processing frame from {cam_id}")
 
             # Convert to grayscale
             gray_full = frame_to_gray_np(frame)
