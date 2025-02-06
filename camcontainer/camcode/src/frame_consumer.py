@@ -19,181 +19,160 @@ logger = logging.getLogger(__name__)
 cv2.setUseOptimized(True)
 cv2.setNumThreads(4)  # Use multi-threading for better performance
 
+# ------------- FrameConsumer -------------
 class FrameConsumer:
     """
     Main consumer class that:
-      1) Displays **a single combined window** for both camera feeds.
-      2) Runs stereo rectification **in a background thread**.
-      3) Sends rectified frames for detection **without blocking display**.
+      1) Pulls frames from the frame_queue.
+      2) Hands them off to the parallel detector threads (detection_queue),
+         optionally skipping frames to reduce CPU load.
+      3) Receives detection results (detection_result_queue).
+      4) Draws detection overlays and displays in a window.
     """
 
-    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 8):  # Increased detector threads
+    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 4):
         self.frame_queue = frame_queue
+
+        # Queues for handing off frames to the detector threads
         self.detection_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
         self.detection_result_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
 
-        # Create detector threads
-        self.detector_threads = [DetectorThread(self.detection_queue, self.detection_result_queue) for _ in range(num_detector_threads)]
-        for dt in self.detector_threads:
+        # Create multiple parallel detector threads
+        self.detector_threads = []
+        for i in range(num_detector_threads):
+            dt = DetectorThread(self.detection_queue, self.detection_result_queue)
             dt.start()
+            self.detector_threads.append(dt)
 
         self.stereo_processor = StereoProcessor()
 
+        # For tracking FPS, etc.
+        self.camera_data = {}
+
+        # Latest frames and detection results by camera ID
         self.last_frames = {}
         self.latest_results = {}
-        self.frame_counts = {}
-        self.logged_resolutions = set()
 
-        # Track processing times for debugging
-        self.last_update_time = time.time()
+        # --- MODIFIED: We’ll track how many frames we’ve handled per camera for skipping ---
+        self.frame_counts = {}
 
     def log_frame_info(self, cam_id: str, frame: 'Frame'):
-        """Log frame resolution only once per camera."""
+        """Log frame resolution."""
         resolution = (frame.get_width(), frame.get_height())
-        if cam_id not in self.logged_resolutions:
-            logger.info(f"Camera {cam_id} - Resolution: {resolution}")
-            self.logged_resolutions.add(cam_id)
+        print(f"Camera {cam_id} - Resolution: {resolution}")
 
     def run(self):
+        """Main loop: fetch frames, pass to detector, fetch results, draw and display."""
         IMAGE_CAPTION = 'DroneCam Multicam View: Press <Enter> to exit'
         KEY_CODE_ENTER = 13
+
+        alive = True
         cv2.namedWindow(IMAGE_CAPTION, cv2.WINDOW_AUTOSIZE)
 
-        while True:
+        while alive:
+            # 1. Retrieve new frames from producers
             try:
                 cam_id, frame = self.frame_queue.get(timeout=0.01)
                 if frame:
+                    # Valid frame
                     self.log_frame_info(cam_id, frame)
-                    opencv_image = frame.as_opencv_image()
-                    self.last_frames[cam_id] = opencv_image
+                    self.last_frames[cam_id] = frame
 
-                    # **Display raw frame immediately**
-                    self.display_combined(IMAGE_CAPTION)
+                    # --- MODIFIED: Counting frames per camera to skip if needed ---
+                    if cam_id not in self.frame_counts:
+                        self.frame_counts[cam_id] = 0
+                    self.frame_counts[cam_id] += 1
 
-                    # **Process only every Nth frame**
-                    self.frame_counts[cam_id] = self.frame_counts.get(cam_id, 0) + 1
+                    # Only offload to detector on every Nth frame to reduce CPU load
                     if self.frame_counts[cam_id] % DETECTION_FRAME_SKIP == 0:
-
-                        # Ensure stereo rectification only happens when two frames are available
-                        if len(self.last_frames) >= 2:
-                            cam_ids = list(self.last_frames.keys())
-                            image_cam0 = self.last_frames[cam_ids[0]]
-                            image_cam1 = self.last_frames[cam_ids[1]]
-
-                            # **Run rectification in background**
-                            threading.Thread(target=self.rectify_and_detect, args=(image_cam0, image_cam1, cam_ids[0], cam_ids[1]), daemon=True).start()
+                        try:
+                            self.detection_queue.put_nowait((cam_id, frame))
+                        except queue.Full:
+                            pass
+                else:
+                    # Frame is None => camera missing or ended
+                    self.last_frames.pop(cam_id, None)
+                    self.latest_results.pop(cam_id, None)
+                    try:
+                        self.detection_queue.put_nowait((cam_id, None))
+                    except queue.Full:
+                        pass
 
             except queue.Empty:
-                pass  # No new frames
+                # No new frames at the moment
+                pass
 
-            # Show **one** combined display
-            self.display_combined(IMAGE_CAPTION)
+            # 2. Collect detection results
+            while True:
+                try:
+                    cam_id_res, gray_res, detections_res = self.detection_result_queue.get_nowait()
+                    if gray_res is None or detections_res is None:
+                        # If detection result is None, the camera ended
+                        self.latest_results.pop(cam_id_res, None)
+                    else:
+                        # Store the latest detection results
+                        self.latest_results[cam_id_res] = (gray_res, detections_res)
+                except queue.Empty:
+                    break
 
-            # Exit on Enter key
+            # 3. Display results
+            if self.latest_results:
+                processed_frames = []
+                # Sort camera IDs for a consistent layout
+                for cid in sorted(self.latest_results.keys()):
+                    gray, detections = self.latest_results[cid]
+
+                    # Convert to BGR to draw color overlays
+                    color_frame = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+                    # Draw AprilTag corners and IDs
+                    for det in detections:
+                        tag_id = det['tag_id']
+                        corners = det['corners']  # Already scaled to full res
+
+                        # Draw corners in different colors
+                        for i, corner in enumerate(corners):
+                            corner = corner.flatten().astype(int)
+                            if i == 0:
+                                color = (0, 0, 255)      # Red
+                            elif i == 1:
+                                color = (0, 255, 0)      # Green
+                            elif i == 2:
+                                color = (255, 0, 0)      # Blue
+                            else:
+                                color = (0, 255, 255)    # Yellow
+                            cv2.circle(color_frame, tuple(corner), 8, color, -1)
+
+                        # Draw lines between corners
+                        for i in range(4):
+                            start = tuple(corners[i].flatten().astype(int))
+                            end = tuple(corners[(i + 1) % 4].flatten().astype(int))
+                            cv2.line(color_frame, start, end, (255, 255, 255), 2)
+
+                        # Put ID text at the center
+                        center = np.mean(corners, axis=0).flatten().astype(int)
+                        cv2.putText(color_frame, str(tag_id), tuple(center),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+
+                    # Resize for display
+                    display_frame = resize_for_display(color_frame)
+                    processed_frames.append(display_frame)
+
+                # Concatenate side by side
+                if processed_frames:
+                    display_frame = np.concatenate(processed_frames, axis=1)
+                    cv2.imshow(IMAGE_CAPTION, display_frame)
+            else:
+                # If no detections or no cameras, show dummy frame
+                cv2.imshow(IMAGE_CAPTION, create_dummy_frame())
+
+            # 4. Check for user exit
             if KEY_CODE_ENTER == cv2.waitKey(1):
                 cv2.destroyAllWindows()
-                break
+                alive = False
 
-        # Stop detector threads
+        # Stop the parallel detector threads gracefully
         for dt in self.detector_threads:
             dt.stop()
         for dt in self.detector_threads:
             dt.join()
-
-    def rectify_and_detect(self, image_cam0, image_cam1, cam_id0, cam_id1):
-        """Runs stereo rectification and sends frames for detection."""
-    
-        # Default values
-        rectified_cam0 = None
-        rectified_cam1 = None
-
-        self.stereo_processor.rectify_frames_async(image_cam0, image_cam1, cam_id0, cam_id1)
-
-        time.sleep(0.05)  # Small delay to allow async processing
-
-        # Retrieve rectified images
-        with self.stereo_processor.lock:
-            if cam_id0 in self.stereo_processor.rectified_frames:
-                rectified_cam0 = self.stereo_processor.rectified_frames.pop(cam_id0)
-            if cam_id1 in self.stereo_processor.rectified_frames:
-                rectified_cam1 = self.stereo_processor.rectified_frames.pop(cam_id1)
-
-        # Ensure valid images
-        if rectified_cam0 is None or rectified_cam1 is None:
-            logger.error(f"Rectified images are None for {cam_id0} or {cam_id1}!")
-            return
-
-        # Convert to grayscale **only if needed**
-        gray_cam0 = rectified_cam0 if len(rectified_cam0.shape) == 2 else cv2.cvtColor(rectified_cam0, cv2.COLOR_BGR2GRAY)
-        gray_cam1 = rectified_cam1 if len(rectified_cam1.shape) == 2 else cv2.cvtColor(rectified_cam1, cv2.COLOR_BGR2GRAY)
-
-        # Remove older frames from the queue before adding new ones
-        while not self.detection_queue.empty():
-            try:
-                self.detection_queue.get_nowait()  # Drop oldest frame
-            except queue.Empty:
-                break
-
-        try:
-            self.detection_queue.put_nowait((cam_id0, gray_cam0))
-            self.detection_queue.put_nowait((cam_id1, gray_cam1))
-        except queue.Full:
-            logger.warning("Detection queue is full, dropping frame!")
-
-
-    def display_combined(self, image_caption):
-        """Combine both camera feeds into a single window and display."""
-        if len(self.last_frames) >= 2:
-            cam_ids = list(self.last_frames.keys())
-            img_left = resize_for_display(self.last_frames[cam_ids[0]])
-            img_right = resize_for_display(self.last_frames[cam_ids[1]])
-
-            # **Concatenate both images side by side**
-            combined_frame = np.hstack((img_left, img_right))
-
-            # **Ensure OpenCV updates are smooth**
-            if time.time() - self.last_update_time > 0.03:  # Limit to ~30 FPS
-                cv2.imshow(image_caption, combined_frame)
-                self.last_update_time = time.time()
-        else:
-            cv2.imshow(image_caption, create_dummy_frame())
-
-    def display_results(self, image_caption):
-        """Fetch detection results and display them."""
-        while True:
-            try:
-                cam_id_res, gray_res, detections_res = self.detection_result_queue.get_nowait()
-                if gray_res is None or detections_res is None:
-                    self.latest_results.pop(cam_id_res, None)
-                else:
-                    self.latest_results[cam_id_res] = (gray_res, detections_res)
-            except queue.Empty:
-                break
-
-        if self.latest_results:
-            processed_frames = []
-            for cid in sorted(self.latest_results.keys()):
-                gray, detections = self.latest_results[cid]
-                color_frame = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
-
-                for det in detections:
-                    tag_id = det['tag_id']
-                    corners = det['corners']
-                    for i, corner in enumerate(corners):
-                        corner = corner.flatten().astype(int)
-                        color = [(0, 0, 255), (0, 255, 0), (255, 0, 0), (0, 255, 255)][i]
-                        cv2.circle(color_frame, tuple(corner), 8, color, -1)
-                    for i in range(4):
-                        start = tuple(corners[i].flatten().astype(int))
-                        end = tuple(corners[(i + 1) % 4].flatten().astype(int))
-                        cv2.line(color_frame, start, end, (255, 255, 255), 2)
-                    center = np.mean(corners, axis=0).flatten().astype(int)
-                    cv2.putText(color_frame, str(tag_id), tuple(center), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-
-                processed_frames.append(resize_for_display(color_frame))
-
-            if processed_frames:
-                display_frame = np.concatenate(processed_frames, axis=1)
-                cv2.imshow(image_caption, display_frame)
-        else:
-            cv2.imshow(image_caption, create_dummy_frame())
