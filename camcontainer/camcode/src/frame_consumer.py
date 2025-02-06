@@ -1,8 +1,6 @@
 import queue
 import cv2
-import threading
 import logging
-import time
 from cam_detector import DetectorThread
 from constants import FRAME_QUEUE_SIZE, NUM_DETECTOR_THREADS, DETECTION_FRAME_SKIP
 from vmbpy import *
@@ -17,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Optimize OpenCV for speed
 cv2.setUseOptimized(True)
-cv2.setNumThreads(4)  # Use multi-threading for better performance
+cv2.setNumThreads(NUM_DETECTOR_THREADS)  # Use multi-threading for better performance
 
 # ------------- FrameConsumer -------------
 class FrameConsumer:
