@@ -3,7 +3,7 @@ import cv2
 import threading
 import logging
 import time
-from detector import DetectorThread
+from cam_detector import DetectorThread
 from constants import FRAME_QUEUE_SIZE, NUM_DETECTOR_THREADS, DETECTION_FRAME_SKIP
 from vmbpy import *
 from frame_processing import resize_for_display
