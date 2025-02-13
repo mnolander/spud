@@ -2,6 +2,9 @@
 
 set -e  # Exit on error
 
+# Set DEBIAN_FRONTEND to noninteractive to skip timezone and other prompts
+export DEBIAN_FRONTEND=noninteractive
+
 # Add ROS package repository
 apt-get update && apt-get install -y software-properties-common
 add-apt-repository universe
@@ -45,6 +48,7 @@ apt-get update && apt-get install -y \
     python3-catkin-tools \
     libv4l-dev
 
+# VimbaX Installation
 TAR_FILE="VimbaX_Setup-2023-4-Linux64.tar.gz"  # Change to the actual version if needed
 INSTALL_DIR="/opt/VimbaX"
 PROFILE_SCRIPT="/etc/profile.d/vimbax.sh"
