@@ -5,6 +5,7 @@ import threading
 import logging
 import sys
 import os
+import tf.transformations as tf_transforms  # ✅ For converting rotation matrix to quaternion
 
 # Dynamically add the enhanced_python_aprilgrid/src directory to sys.path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid", "src")))
@@ -18,7 +19,6 @@ from frame_processing import frame_to_gray_np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# cv2.setUseOptimized(True)
 cv2.setNumThreads(4)  # Use multi-threading for better performance
 
 class DetectorThread(threading.Thread):
@@ -27,8 +27,7 @@ class DetectorThread(threading.Thread):
       - Pulls frames from the detection_queue
       - Runs AprilTag detection
       - Stores results in detection_result_queue
-      - Computes 3D positions if both cameras detect the same tags
-      - Pushes rectified images to frame_consumer.py
+      - Computes 3D positions and rotations if both cameras detect the same tags
     """
 
     def __init__(self, detection_queue: queue.Queue, detection_result_queue: queue.Queue):
@@ -42,6 +41,15 @@ class DetectorThread(threading.Thread):
         # Stores latest detections from both cameras
         self.latest_detections = {"DEV_1AB22C00E123": {}, "DEV_1AB22C00E588": {}}
 
+        # Define AprilTag 3D Model Points (16 cm tag)
+        self.tag_size = 0.16  # 16 cm
+        self.tag_corners_3d = np.array([
+            [-self.tag_size / 2, -self.tag_size / 2, 0],  
+            [self.tag_size / 2, -self.tag_size / 2, 0],  
+            [self.tag_size / 2, self.tag_size / 2, 0],  
+            [-self.tag_size / 2, self.tag_size / 2, 0]  
+        ], dtype=np.float32)
+
     def stop(self):
         self.killswitch.set()
 
@@ -54,7 +62,7 @@ class DetectorThread(threading.Thread):
         return frame  # Return original if unknown cam_id
 
     def compute_3d_positions(self):
-        """Compute 3D positions when both cameras detect the same tags."""
+        """Compute 3D positions and rotations when both cameras detect the same tags."""
         left_detections = self.latest_detections["DEV_1AB22C00E123"]
         right_detections = self.latest_detections["DEV_1AB22C00E588"]
 
@@ -62,23 +70,47 @@ class DetectorThread(threading.Thread):
             return  # No detections from one of the cameras
 
         matched_ids = set(left_detections.keys()).intersection(set(right_detections.keys()))
-
         if not matched_ids:
             return  # No common detections
 
         left_pts = np.array([left_detections[tag_id] for tag_id in matched_ids])
         right_pts = np.array([right_detections[tag_id] for tag_id in matched_ids])
 
+        # ✅ Compute 3D positions
         points_4d_hom = cv2.triangulatePoints(
             self.stereo_processor.P1,
             self.stereo_processor.P2,
             left_pts.T,
             right_pts.T
         )
-        points_3d = (points_4d_hom[:3] / points_4d_hom[3]).T
+        points_3d = (points_4d_hom[:3] / points_4d_hom[3]).T  # Convert to Euclidean
 
+        results = []
         for tag_id, (x, y, z) in zip(matched_ids, points_3d):
             print(f"Tag ID {tag_id}: 3D Position (X: {x:.6f}, Y: {y:.6f}, Z: {z:.6f})")
+
+            # ✅ Estimate rotation using solvePnP
+            if tag_id in left_detections:
+                corners_2d = np.array(left_detections[tag_id], dtype=np.float32)
+                camera_matrix = self.stereo_processor.K1
+                dist_coeffs = self.stereo_processor.calibration.primary_distortion
+            else:
+                corners_2d = np.array(right_detections[tag_id], dtype=np.float32)
+                camera_matrix = self.stereo_processor.K2
+                dist_coeffs = self.stereo_processor.calibration.secondary_distortion
+
+            success, rvec, _ = cv2.solvePnP(self.tag_corners_3d, corners_2d, camera_matrix, dist_coeffs)
+            if success:
+                rotation_matrix, _ = cv2.Rodrigues(rvec)
+                quaternion = tf_transforms.quaternion_from_matrix(
+                    np.vstack([np.hstack([rotation_matrix, [[0], [0], [0]]]), [0, 0, 0, 1]])
+                )
+            else:
+                quaternion = [0.0, 0.0, 0.0, 1.0]  # Default if pose estimation fails
+
+            results.append((tag_id, (x, y, z), quaternion))
+
+        return results
 
     def run(self):
         while not self.killswitch.is_set():
@@ -91,8 +123,6 @@ class DetectorThread(threading.Thread):
                 logger.warning(f"Detector received an empty frame from {cam_id}")
                 self.detection_result_queue.put((cam_id, None, None, None))
                 continue
-
-            # logger.info(f"Processing frame from {cam_id}")
 
             # Convert to grayscale
             gray_full = frame_to_gray_np(frame)
@@ -123,8 +153,8 @@ class DetectorThread(threading.Thread):
             # Save detections for 3D computation
             self.latest_detections[cam_id] = detected_tags
 
-            # Compute 3D positions when both cameras detect tags
-            self.compute_3d_positions()
+            # Compute 3D positions and rotations
+            tag_results = self.compute_3d_positions()
 
-            # Push rectified frame & detections to frame_consumer.py
-            self.detection_result_queue.put((cam_id, gray_full, detections_fullres))
+            # Push rectified frame & detections with rotation to frame_consumer.py
+            self.detection_result_queue.put((cam_id, gray_full, detections_fullres, tag_results))
