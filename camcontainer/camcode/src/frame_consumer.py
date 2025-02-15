@@ -34,11 +34,12 @@ class FrameConsumer:
         # Queues for handing off frames to the detector threads
         self.detection_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
         self.detection_result_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
+        self.ros_result_queue = queue.Queue() 
 
         # Create multiple parallel detector threads
         self.detector_threads = []
         for i in range(num_detector_threads):
-            dt = DetectorThread(self.detection_queue, self.detection_result_queue)
+            dt = DetectorThread(self.detection_queue, self.detection_result_queue, self.ros_result_queue)
             dt.start()
             self.detector_threads.append(dt)
 
@@ -139,7 +140,7 @@ class FrameConsumer:
                                 color = (255, 0, 0)      # Blue
                             else:
                                 color = (0, 255, 255)    # Yellow
-                            cv2.circle(color_frame, tuple(corner), 8, color, -1)
+                            cv2.circle(color_frame, tuple(corner), 16, color, -1)
 
                         # Draw lines between corners
                         for i in range(4):

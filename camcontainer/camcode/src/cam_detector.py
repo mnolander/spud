@@ -27,13 +27,15 @@ class DetectorThread(threading.Thread):
       - Pulls frames from the detection_queue
       - Runs AprilTag detection
       - Stores results in detection_result_queue
-      - Computes 3D positions and rotations if both cameras detect the same tags
+      - Computes 3D positions if both cameras detect the same tags
+      - Pushes rectified images to frame_consumer.py
     """
 
-    def __init__(self, detection_queue: queue.Queue, detection_result_queue: queue.Queue):
+    def __init__(self, detection_queue: queue.Queue, detection_result_queue: queue.Queue, ros_result_queue: queue.Queue):
         super().__init__()
         self.detection_queue = detection_queue
         self.detection_result_queue = detection_result_queue
+        self.ros_result_queue = ros_result_queue  # ✅ Store ros_result_queue
         self.detector = Detector('t16h5b1')
         self.killswitch = threading.Event()
         self.stereo_processor = StereoProcessor()
@@ -41,8 +43,8 @@ class DetectorThread(threading.Thread):
         # Stores latest detections from both cameras
         self.latest_detections = {"DEV_1AB22C00E123": {}, "DEV_1AB22C00E588": {}}
 
-        # Define AprilTag 3D Model Points (16 cm tag)
-        self.tag_size = 0.16  # 16 cm
+        # Define AprilTag 3D Model Point (2.6 cm)
+        self.tag_size = 0.26
         self.tag_corners_3d = np.array([
             [-self.tag_size / 2, -self.tag_size / 2, 0],  
             [self.tag_size / 2, -self.tag_size / 2, 0],  
@@ -62,19 +64,20 @@ class DetectorThread(threading.Thread):
         return frame  # Return original if unknown cam_id
 
     def compute_3d_positions(self):
-        """Compute 3D positions and rotations when both cameras detect the same tags."""
+        """Compute 3D positions when both cameras detect the same tags."""
         left_detections = self.latest_detections["DEV_1AB22C00E123"]
         right_detections = self.latest_detections["DEV_1AB22C00E588"]
 
         if not left_detections or not right_detections:
-            return  # No detections from one of the cameras
+            return  None # No detections from one of the cameras
 
         matched_ids = set(left_detections.keys()).intersection(set(right_detections.keys()))
-        if not matched_ids:
-            return  # No common detections
 
-        left_pts = np.array([left_detections[tag_id] for tag_id in matched_ids])
-        right_pts = np.array([right_detections[tag_id] for tag_id in matched_ids])
+        if not matched_ids:
+            return  None # No common detections
+
+        left_pts = np.array([left_detections[tag_id].mean(axis=0) for tag_id in matched_ids])
+        right_pts = np.array([right_detections[tag_id].mean(axis=0) for tag_id in matched_ids])
 
         # ✅ Compute 3D positions
         points_4d_hom = cv2.triangulatePoints(
@@ -83,23 +86,34 @@ class DetectorThread(threading.Thread):
             left_pts.T,
             right_pts.T
         )
-        points_3d = (points_4d_hom[:3] / points_4d_hom[3]).T  # Convert to Euclidean
+        points_3d = (points_4d_hom[:3] / points_4d_hom[3]).T
 
         results = []
         for tag_id, (x, y, z) in zip(matched_ids, points_3d):
             print(f"Tag ID {tag_id}: 3D Position (X: {x:.6f}, Y: {y:.6f}, Z: {z:.6f})")
 
-            # ✅ Estimate rotation using solvePnP
-            if tag_id in left_detections:
-                corners_2d = np.array(left_detections[tag_id], dtype=np.float32)
-                camera_matrix = self.stereo_processor.K1
-                dist_coeffs = self.stereo_processor.calibration.primary_distortion
-            else:
-                corners_2d = np.array(right_detections[tag_id], dtype=np.float32)
-                camera_matrix = self.stereo_processor.K2
-                dist_coeffs = self.stereo_processor.calibration.secondary_distortion
+            # ✅ Get the correct corners
+            corners_2d = np.array(left_detections[tag_id], dtype=np.float32)
 
+            # ✅ FIX: Reshape `corners_2d` to ensure correct shape (4,2)
+            corners_2d = corners_2d.reshape(4, 2)
+
+            # ✅ Ensure at least 4 detected points
+            if corners_2d.shape != (4, 2):
+                logger.warning(f"Skipping tag {tag_id}: Incorrect shape {corners_2d.shape}, expected (4,2).")
+                continue
+
+            camera_matrix = self.stereo_processor.K1
+            dist_coeffs = self.stereo_processor.calibration.primary_distortion
+
+            # ✅ Check camera parameters
+            if camera_matrix is None or dist_coeffs is None:
+                logger.error(f"Camera parameters missing for tag {tag_id}, skipping pose estimation.")
+                continue
+
+            # ✅ Run solvePnP
             success, rvec, _ = cv2.solvePnP(self.tag_corners_3d, corners_2d, camera_matrix, dist_coeffs)
+
             if success:
                 rotation_matrix, _ = cv2.Rodrigues(rvec)
                 quaternion = tf_transforms.quaternion_from_matrix(
@@ -109,7 +123,7 @@ class DetectorThread(threading.Thread):
                 quaternion = [0.0, 0.0, 0.0, 1.0]  # Default if pose estimation fails
 
             results.append((tag_id, (x, y, z), quaternion))
-
+        
         return results
 
     def run(self):
@@ -143,18 +157,26 @@ class DetectorThread(threading.Thread):
             detections = self.detector.detect(rectified_frame)
             detections_fullres = []
 
-            # Store detections
+            # Store detections (✅ FIX: Store all four corners, not just center)
             detected_tags = {}
             for det in detections:
-                center = np.array(det.corners).mean(axis=0)  # Use center for 3D matching
-                detected_tags[det.tag_id] = center
-                detections_fullres.append({'tag_id': det.tag_id, 'corners': np.array(det.corners)})
+                if len(det.corners) == 4:
+                    detected_tags[det.tag_id] = np.array(det.corners, dtype=np.float32)
+                    detections_fullres.append({'tag_id': det.tag_id, 'corners': np.array(det.corners)})
+                    logger.debug(f"Tag {det.tag_id}: Corners detected -> {detected_tags[det.tag_id]}, shape: {detected_tags[det.tag_id].shape}")
+                else:
+                    logger.warning(f"Tag {det.tag_id}: Only {len(det.corners)} corners detected! Skipping.")
 
             # Save detections for 3D computation
             self.latest_detections[cam_id] = detected_tags
 
-            # Compute 3D positions and rotations
+            # Compute 3D positions when both cameras detect tags
+            # self.compute_3d_positions()
+
             tag_results = self.compute_3d_positions()
 
-            # Push rectified frame & detections with rotation to frame_consumer.py
-            self.detection_result_queue.put((cam_id, gray_full, detections_fullres, tag_results))
+            if tag_results is not None:
+                self.ros_result_queue.put(tag_results)
+
+            # Push rectified frame & detections to frame_consumer.py
+            self.detection_result_queue.put((cam_id, gray_full, detections_fullres))
