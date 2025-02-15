@@ -16,6 +16,8 @@ rm -rf /var/lib/apt/lists/*
 
 # Install ROS
 
+apt-get update
+
 apt-get install -y software-properties-common
 add-apt-repository universe
 add-apt-repository multiverse
@@ -23,8 +25,8 @@ add-apt-repository restricted
 
 apt-get update
 sh -c 'echo "deb http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" > /etc/apt/sources.list.d/ros-latest.list'
-curl -sSL 'https://raw.githubusercontent.com/ros/rosdistro/master/ros.key' | sudo tee /usr/share/keyrings/ros-archive-keyring.gpg > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/ros-latest.list > /dev/null
+curl -sSL 'https://raw.githubusercontent.com/ros/rosdistro/master/ros.key' | tee /usr/share/keyrings/ros-archive-keyring.gpg > /dev/null
+echo "deb [signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros/ubuntu $(lsb_release -sc) main" | tee /etc/apt/sources.list.d/ros-latest.list > /dev/null
 
 
 curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add -
