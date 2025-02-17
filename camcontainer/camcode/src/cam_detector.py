@@ -89,7 +89,6 @@ class DetectorThread(threading.Thread):
 
         results = []
         for tag_id, (x, y, z) in zip(matched_ids, points_3d):
-            print(f"Tag ID {tag_id}: 3D Position (X: {x:.6f}, Y: {y:.6f}, Z: {z:.6f})")
 
             # ✅ Get the correct corners
             corners_2d = np.array(left_detections[tag_id], dtype=np.float32)
@@ -121,10 +120,14 @@ class DetectorThread(threading.Thread):
             else:
                 quaternion = [0.0, 0.0, 0.0, 1.0]  # Default if pose estimation fails
 
+            print(f'''Tag ID {tag_id}: 3D Position (X: {x:.4f}, Y: {y:.4f}, Z: {z:.4f})
+                  {quaternion}''', flush=True)
+
+
+
             results.append((tag_id, (x, y, z), quaternion))
         
         return results
-
     def run(self):
         while not self.killswitch.is_set():
             try:
@@ -173,4 +176,4 @@ class DetectorThread(threading.Thread):
             self.compute_3d_positions()
 
             # Push rectified frame & detections to frame_consumer.py
-            self.detection_result_queue.put((cam_id, gray_full, detections_fullres))
+            self.detection_result_queue.put((cam_id, rectified_frame, detections_fullres))

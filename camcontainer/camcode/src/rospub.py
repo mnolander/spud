@@ -82,7 +82,7 @@ if __name__ == '__main__':
 
     # ✅ Simulate an AprilTag detection
     import time
-    time.sleep(2)  # Wait before sending data
+    # time.sleep(2)  # Wait before sending data
 
     # Simulated Data
     test_data = [
