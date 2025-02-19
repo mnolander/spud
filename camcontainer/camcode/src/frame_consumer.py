@@ -139,7 +139,7 @@ class FrameConsumer:
                                 color = (255, 0, 0)      # Blue
                             else:
                                 color = (0, 255, 255)    # Yellow
-                            cv2.circle(color_frame, tuple(corner), 5, color, -1)
+                            cv2.circle(color_frame, tuple(corner), 16, color, -1)
 
                         # Draw lines between corners
                         for i in range(4):

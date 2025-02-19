@@ -51,8 +51,8 @@ class FrameProducer(threading.Thread):
 
         try:
             self.cam.ExposureAuto.set('Off')
-            self.cam.ExposureTime.set(10000)
-            self.cam.Gain.set(0.1)
+            self.cam.ExposureTime.set(20000)
+            self.cam.Gain.set(4)
             self.cam.BinningHorizontal.set(2)
             self.cam.BinningVertical.set(2)
 

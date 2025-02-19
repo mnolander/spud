@@ -43,7 +43,7 @@ class DetectorThread(threading.Thread):
         self.latest_detections = {"DEV_1AB22C00E123": {}, "DEV_1AB22C00E588": {}}
 
         # Define AprilTag 3D Model Point (2.6 cm)
-        self.tag_size = 0.5
+        self.tag_size = 0.26
         self.tag_corners_3d = np.array([
             [-self.tag_size / 2, -self.tag_size / 2, 0],  
             [self.tag_size / 2, -self.tag_size / 2, 0],  
