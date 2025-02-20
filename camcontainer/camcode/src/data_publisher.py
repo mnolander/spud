@@ -34,7 +34,7 @@ def extract_quaternion(output_data):
 def talker():
     rospy.init_node('tf_publisher', anonymous=True)
     
-    tf_pub = rospy.Publisher('/tf', TFMessage, queue_size=5000)
+    tf_pub = rospy.Publisher('/tf', TFMessage, queue_size=20)
 
     rospy.loginfo("Starting tf_publisher.py...")
 

@@ -19,7 +19,7 @@ from frame_processing import frame_to_gray_np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-cv2.setNumThreads(4)  # Use multi-threading for better performance
+cv2.setNumThreads(6)  # Use multi-threading for better performance
 
 class DetectorThread(threading.Thread):
     """
