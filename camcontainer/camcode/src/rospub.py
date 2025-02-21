@@ -20,7 +20,7 @@ class ROSTopicPublisher(threading.Thread):
         rospy.init_node('april_tag_tf_publisher', anonymous=True)
         self.tf_pub = rospy.Publisher('/tf', TFMessage, queue_size=10)
         self.killswitch = threading.Event()
-        self.rate = rospy.Rate(30)  # 30 Hz
+        self.rate = rospy.Rate(300)  # 30 Hz
 
         # Configure logging
         logging.basicConfig(level=logging.INFO)
@@ -35,7 +35,7 @@ class ROSTopicPublisher(threading.Thread):
         while not rospy.is_shutdown() and not self.killswitch.is_set():
             try:
                 self.logger.info("🔄 Waiting for tag results...")
-                tag_results = self.ros_result_queue.get(timeout=0.5)
+                tag_results = self.ros_result_queue.get(timeout=0.01)
 
                 if not tag_results:
                     self.logger.warning("⚠ No detections received. Queue is empty!")

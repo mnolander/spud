@@ -28,12 +28,12 @@ class FrameConsumer:
       4) Draws detection overlays and displays in a window.
     """
 
-    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 4):
+    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 6):
         self.frame_queue = frame_queue
 
         # Queues for handing off frames to the detector threads
-        self.detection_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
-        self.detection_result_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE)
+        self.detection_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE*2)
+        self.detection_result_queue = queue.Queue(maxsize=FRAME_QUEUE_SIZE*2)
 
         # Create multiple parallel detector threads
         self.detector_threads = []

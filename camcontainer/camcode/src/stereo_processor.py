@@ -5,8 +5,8 @@ import sys
 import os
 
 # If aprilgrid is under ../src:
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "enhanced_python_aprilgrid", "src")))
-from aprilgrid import Detector  
+cv2.ocl.setUseOpenCL(True)
+cv2.setNumThreads(cv2.getNumberOfCPUs()) 
 
 class CameraCalibration:
     def __init__(self, primary_intrinsics, secondary_intrinsics, primary_distortion, secondary_distortion, extrinsics):

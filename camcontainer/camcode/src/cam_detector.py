@@ -19,7 +19,10 @@ from frame_processing import frame_to_gray_np
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-cv2.setNumThreads(6)  # Use multi-threading for better performance
+# cv2.setNumThreads(6)  # Use multi-threading for better performance
+cv2.ocl.setUseOpenCL(True)
+cv2.setNumThreads(cv2.getNumberOfCPUs())  # Use all available CPU cores
+
 
 class DetectorThread(threading.Thread):
     """
@@ -156,6 +159,8 @@ class DetectorThread(threading.Thread):
                 continue
 
             # Perform AprilTag detection
+            # import cProfile
+            # cProfile.run('self.detector.detect(rectified_frame)')
             detections = self.detector.detect(rectified_frame)
             detections_fullres = []
 
@@ -173,7 +178,8 @@ class DetectorThread(threading.Thread):
             self.latest_detections[cam_id] = detected_tags
 
             # Compute 3D positions when both cameras detect tags
-            self.compute_3d_positions()
+            if len(self.latest_detections["DEV_1AB22C00E123"]) > 0 and len(self.latest_detections["DEV_1AB22C00E588"]) > 0:
+                self.compute_3d_positions()
 
             # Push rectified frame & detections to frame_consumer.py
             self.detection_result_queue.put((cam_id, rectified_frame, detections_fullres))

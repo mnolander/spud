@@ -25,7 +25,7 @@ class Detector:
         # step 1 resize
         # max_size = np.max(img.shape)
         #start_time = time.time()
-        im_blur = cv2.bilateralFilter(img, 9, 75, 75) # cv2.GaussianBlur(img, (3, 3), 1)
+        im_blur = cv2.GaussianBlur(img, (3, 3), 1) # cv2.GaussianBlur(img, (3, 3), 1)
         #blur_time = time.time() - start_time
         #print(blur_time)
         # im_blur_resize = im_blur.copy()

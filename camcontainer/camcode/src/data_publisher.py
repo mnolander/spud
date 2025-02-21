@@ -7,6 +7,7 @@ import re
 from tf2_msgs.msg import TFMessage
 from geometry_msgs.msg import TransformStamped
 
+
 def extract_position(output_data):
     """
     Extracts X, Y, Z values from the first line.
@@ -34,13 +35,13 @@ def extract_quaternion(output_data):
 def talker():
     rospy.init_node('tf_publisher', anonymous=True)
     
-    tf_pub = rospy.Publisher('/tf', TFMessage, queue_size=20)
+    tf_pub = rospy.Publisher('/tf', TFMessage, queue_size=100)
 
     rospy.loginfo("Starting tf_publisher.py...")
 
     process = subprocess.Popen(
         ["python3", "/home/ubuntu/capstone/dronecamtoolbox/camcontainer/camcode/src/main.py"],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=10
     )
 
     rate = rospy.Rate(200)  # 35 Hz
@@ -72,6 +73,7 @@ def talker():
             if quaternion is None:
                 rospy.logwarn(f"⚠ Invalid Quaternion Data: {quaternion_line}")
                 continue  # Skip to next iteration
+
 
             # If both position and quaternion are valid, publish TF
             x, y, z = map(lambda v: round(v, 4), position)
@@ -115,7 +117,7 @@ def talker():
         except Exception as e:
             rospy.logerr(f" Exception: {e}")
 
-        rate.sleep()
+    rate.sleep()
 
 if __name__ == '__main__':
     try:
