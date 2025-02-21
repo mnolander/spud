@@ -103,8 +103,8 @@ class FrameProducer(threading.Thread):
         # Try to enable automatic exposure time setting
         try:
             self.cam.ExposureAuto.set('Off')
-            self.cam.ExposureTime.set(20000)
-            self.cam.Gain.set(16)
+            self.cam.ExposureTime.set(8000)
+            self.cam.Gain.set(0.1)
             self.cam.BinningHorizontal.set(2)
             self.cam.BinningVertical.set(2)
         except (AttributeError, VmbFeatureError):
