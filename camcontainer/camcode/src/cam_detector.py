@@ -81,7 +81,7 @@ class DetectorThread(threading.Thread):
         left_pts = np.array([left_detections[tag_id].mean(axis=0) for tag_id in matched_ids])
         right_pts = np.array([right_detections[tag_id].mean(axis=0) for tag_id in matched_ids])
 
-        # ✅ Compute 3D positions
+        # Compute 3D positions
         points_4d_hom = cv2.triangulatePoints(
             self.stereo_processor.P1,
             self.stereo_processor.P2,
@@ -93,7 +93,7 @@ class DetectorThread(threading.Thread):
         results = []
         for tag_id, (x, y, z) in zip(matched_ids, points_3d):
 
-            # ✅ Get the correct corners
+            # Get the correct corners
             corners_2d = np.array(left_detections[tag_id], dtype=np.float32)
 
             # ✅ FIX: Reshape `corners_2d` to ensure correct shape (4,2)
@@ -171,6 +171,7 @@ class DetectorThread(threading.Thread):
                     detected_tags[det.tag_id] = np.array(det.corners, dtype=np.float32)
                     detections_fullres.append({'tag_id': det.tag_id, 'corners': np.array(det.corners)})
                     logger.debug(f"Tag {det.tag_id}: Corners detected -> {detected_tags[det.tag_id]}, shape: {detected_tags[det.tag_id].shape}")
+
                 else:
                     logger.warning(f"Tag {det.tag_id}: Only {len(det.corners)} corners detected! Skipping.")
 

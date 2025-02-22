@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Optimize OpenCV for speed
+# cv2.setNumThreads(6) 
 cv2.setUseOptimized(True)
 cv2.setNumThreads(NUM_DETECTOR_THREADS)  # Use multi-threading for better performance
 
@@ -28,7 +29,7 @@ class FrameConsumer:
       4) Draws detection overlays and displays in a window.
     """
 
-    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 6):
+    def __init__(self, frame_queue: queue.Queue, num_detector_threads: int = 2):
         self.frame_queue = frame_queue
 
         # Queues for handing off frames to the detector threads
