@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 # cv2.setNumThreads(6)  # Use multi-threading for better performance
 cv2.ocl.setUseOpenCL(True)
-cv2.setNumThreads(cv2.getNumberOfCPUs())  # Use all available CPU cores
+cv2.setNumThreads(4)  # Use all available CPU cores
 
 
 class DetectorThread(threading.Thread):
