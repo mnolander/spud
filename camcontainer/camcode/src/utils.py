@@ -1,7 +1,6 @@
 import numpy as np
 import cv2
 import math
-import time
 from scipy.spatial.transform import Rotation as R
 
 def print_preamble():
@@ -51,11 +50,10 @@ def compute_distance(intrinsics, tag_size, corners):
         return math.sqrt((pt1[0][0] - pt2[0][0]) ** 2 + (pt1[0][1] - pt2[0][1]) ** 2)
 
     try:
-        d1 = euclidean_distance(corners[0], corners[2])  # Diagonal 1
-        d2 = euclidean_distance(corners[1], corners[3])  # Diagonal 2
+        d1 = euclidean_distance(corners[0], corners[2])
+        d2 = euclidean_distance(corners[1], corners[3])
         avg_pixel_distance = (d1 + d2) / 2
 
-        # Compute the distance using the Pinhole Camera Model
         distance = (fx * tag_size) / avg_pixel_distance
         return distance
     except IndexError:
@@ -81,12 +79,12 @@ def compute_pose(intrinsics, tag_size, corners, distortion_coeffs):
     fx, fy, cx, cy = intrinsics
     half_size = tag_size / 2
 
-    # Real-world coordinates of tag corners
+    # Real-world coordinates of the AprilTag corners
     obj_points = np.array([
-        [-half_size, -half_size, 0],  # Bottom-left
-        [ half_size, -half_size, 0],  # Bottom-right
-        [ half_size,  half_size, 0],  # Top-right
-        [-half_size,  half_size, 0]   # Top-left
+        [-half_size, -half_size, 0], 
+        [ half_size, -half_size, 0],
+        [ half_size,  half_size, 0], 
+        [-half_size,  half_size, 0]
     ], dtype=np.float32)
 
     corners_2d = np.array([corner.flatten() for corner in corners], dtype=np.float32)
@@ -98,8 +96,6 @@ def compute_pose(intrinsics, tag_size, corners, distortion_coeffs):
     ], dtype=np.float32)
 
     dist_coeffs = np.array(distortion_coeffs, dtype=np.float32)
-
-    # SolvePnP to calculate pose
     ret, rvec, tvec = cv2.solvePnP(obj_points, corners_2d, camera_matrix, dist_coeffs)
 
     if not ret:

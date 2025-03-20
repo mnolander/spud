@@ -14,16 +14,14 @@ def frame_to_gray_np(frame):
     If the frame is already a NumPy array, return it directly.
     """
     if isinstance(frame, np.ndarray):  
-        return frame  # Already a NumPy array
-
-    # Otherwise, convert from Vimba Frame format
-    return frame.as_opencv_image()  # Convert to OpenCV-compatible format
+        return frame 
+    return frame.as_opencv_image()
 
 
 def downscale_for_detection(gray_full: np.ndarray) -> np.ndarray:
     """Downscale image for detection to reduce CPU load."""
     if DETECTION_DOWNSCALE <= 1:
-        return gray_full  # No downscaling
+        return gray_full
     h, w = gray_full.shape[:2]
     return cv2.resize(gray_full, (w // DETECTION_DOWNSCALE, h // DETECTION_DOWNSCALE), interpolation=cv2.INTER_LINEAR)
 

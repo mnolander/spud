@@ -44,38 +44,37 @@ def talker():
         stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=10
     )
 
-    rate = rospy.Rate(200)  # 35 Hz
+    rate = rospy.Rate(200) 
 
     while not rospy.is_shutdown():
         try:
-            # Read first line (position data)
+            # Reads the poisition data (first line)
             position_line = process.stdout.readline().strip()
 
             if not position_line:
-                continue  # Skip if empty
+                continue
 
-            rospy.loginfo(f"🔹 Received Position: {position_line}")
+            rospy.loginfo(f"Received Position: {position_line}")
             position = extract_position(position_line)
 
             if position is None:
-                rospy.logwarn(f"⚠ Invalid Position Data: {position_line}")
-                continue  # Skip to next iteration
+                rospy.logwarn(f"Invalid Position Data: {position_line}")
+                continue  
 
-            # Read second line (quaternion data)
+            # Reads the quaternion data (second line)
             quaternion_line = process.stdout.readline().strip()
 
             if not quaternion_line:
-                continue  # Skip if empty
+                continue 
 
-            rospy.loginfo(f"🔹 Received Quaternion: {quaternion_line}")
+            rospy.loginfo(f"Received Quaternion: {quaternion_line}")
             quaternion = extract_quaternion(quaternion_line)
 
             if quaternion is None:
-                rospy.logwarn(f"⚠ Invalid Quaternion Data: {quaternion_line}")
-                continue  # Skip to next iteration
+                rospy.logwarn(f"Invalid Quaternion Data: {quaternion_line}")
+                continue 
 
-
-            # If both position and quaternion are valid, publish TF
+            # If both position and quaternion are valid, publish the TF
             x, y, z = map(lambda v: round(v, 4), position)
             qx, qy, qz, qw = map(lambda v: round(v, 3), quaternion)
 

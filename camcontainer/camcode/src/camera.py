@@ -62,7 +62,6 @@ class FrameProducer(threading.Thread):
         except (AttributeError, VmbFeatureError):
             pass
 
-        # Force Mono8 pixel format
         self.cam.set_pixel_format(PixelFormat.Mono8)
 
     def run(self):
@@ -74,5 +73,5 @@ class FrameProducer(threading.Thread):
                 self.killswitch.wait()
             finally:
                 self.cam.stop_streaming()
-        # Signal to consumer that camera is missing by sending None
+
         try_put_frame(self.frame_queue, self.cam, None)
